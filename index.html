@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>아이디어 보드</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js"></script>
+    <style>
+        .idea-card {
+            transition: all 0.3s ease;
+        }
+
+        .idea-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body class="bg-gradient-to-r from-blue-100 to-purple-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-4xl font-bold text-indigo-700">아이디어 보드</h1>
+            <div>
+                <button id="loginButton" class="bg-blue-500 text-white px-4 py-2 rounded mr-2">로그인</button>
+                <button id="signupButton" class="bg-green-500 text-white px-4 py-2 rounded">회원가입</button>
+            </div>
+        </div>
+        <div class="mb-8">
+            <input type="text" id="titleInput" placeholder="제목" class="w-full mb-2 p-2 rounded border border-gray-300">
+            <textarea id="contentInput" placeholder="아이디어" class="w-full mb-2 p-2 rounded border border-gray-300"
+                rows="3"></textarea>
+            <button id="addButton"
+                class="w-full bg-indigo-500 text-white p-2 rounded hover:bg-indigo-600 transition duration-300">추가</button>
+        </div>
+        <div id="ideaList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </div>
+
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white p-8 rounded-lg max-w-lg w-full">
+            <h2 id="modalTitle" class="text-2xl font-bold mb-4"></h2>
+            <p id="modalContent" class="mb-4"></p>
+            <p id="modalAuthor" class="text-sm text-gray-600 mb-4"></p>
+            <div id="editContainer" class="hidden mb-4">
+                <textarea id="editContent" class="w-full p-2 border rounded mb-2" rows="4"></textarea>
+                <button id="saveEditButton"
+                    class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">저장</button>
+            </div>
+            <div class="flex justify-between items-center">
+                <button id="modalLikeButton"
+                    class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition duration-300">👍
+                    좋아요</button>
+                <div>
+                    <button id="editButton"
+                        class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 transition duration-300 mr-2 hidden">수정</button>
+                    <button id="deleteButton"
+                        class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition duration-300 mr-2 hidden">삭제</button>
+                    <button id="closeModal"
+                        class="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400 transition duration-300">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="authModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white p-8 rounded-lg max-w-md w-full">
+            <h2 id="authModalTitle" class="text-2xl font-bold mb-4"></h2>
+            <form id="authForm">
+                <input type="email" id="emailInput" placeholder="이메일"
+                    class="w-full mb-2 p-2 rounded border border-gray-300" required>
+                <input type="password" id="passwordInput" placeholder="비밀번호"
+                    class="w-full mb-4 p-2 rounded border border-gray-300" required>
+                <button type="submit" id="authSubmitButton"
+                    class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition duration-300 mb-2">확인</button>
+            </form>
+            <button id="googleSignInButton"
+                class="w-full bg-red-500 text-white p-2 rounded hover:bg-red-600 transition duration-300 mb-4">구글로
+                로그인</button>
+            <button id="closeAuthModal"
+                class="w-full bg-gray-300 text-gray-700 p-2 rounded hover:bg-gray-400 transition duration-300">닫기</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+        import {getFirestore, collection, addDoc, onSnapshot, updateDoc, doc, getDoc, deleteDoc} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+        import {getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey:  ,
+            authDomain:  ,
+            projectId:  ,
+            storageBucket:  ,
+            messagingSenderId: " ,
+            appId: " "
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const googleProvider = new GoogleAuthProvider();
+
+        const titleInput = document.getElementById('titleInput');
+        const contentInput = document.getElementById('contentInput');
+        const addButton = document.getElementById('addButton');
+        const ideaList = document.getElementById('ideaList');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalContent = document.getElementById('modalContent');
+        const modalAuthor = document.getElementById('modalAuthor');
+        const modalLikeButton = document.getElementById('modalLikeButton');
+        const closeModal = document.getElementById('closeModal');
+        const loginButton = document.getElementById('loginButton');
+        const signupButton = document.getElementById('signupButton');
+        const authModal = document.getElementById('authModal');
+        const authModalTitle = document.getElementById('authModalTitle');
+        const authForm = document.getElementById('authForm');
+        const emailInput = document.getElementById('emailInput');
+        const passwordInput = document.getElementById('passwordInput');
+        const authSubmitButton = document.getElementById('authSubmitButton');
+        const closeAuthModal = document.getElementById('closeAuthModal');
+        const googleSignInButton = document.getElementById('googleSignInButton');
+        const editButton = document.getElementById('editButton');
+        const deleteButton = document.getElementById('deleteButton');
+        const editContainer = document.getElementById('editContainer');
+        const editContent = document.getElementById('editContent');
+        const saveEditButton = document.getElementById('saveEditButton');
+
+        let currentIdeaId = null;
+        let currentUser = null;
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            updateAuthUI();
+        });
+
+        function updateAuthUI() {
+            if (currentUser) {
+                loginButton.textContent = "로그아웃";
+                signupButton.style.display = "none";
+            } else {
+                loginButton.textContent = "로그인";
+                signupButton.style.display = "inline-block";
+            }
+        }
+
+        loginButton.addEventListener('click', () => {
+            if (currentUser) {
+                signOut(auth).then(() => {
+                    console.log("로그아웃 성공");
+                }).catch((error) => {
+                    console.error("로그아웃 실패:", error);
+                });
+            } else {
+                showAuthModal('login');
+            }
+        });
+
+        signupButton.addEventListener('click', () => {
+            showAuthModal('signup');
+        });
+
+        function showAuthModal(type) {
+            authModalTitle.textContent = type === 'login' ? '로그인' : '회원가입';
+            authSubmitButton.textContent = type === 'login' ? '로그인' : '회원가입';
+            authForm.onsubmit = (e) => handleAuth(e, type);
+            googleSignInButton.style.display = type === 'login' ? 'block' : 'none';
+            authModal.classList.remove('hidden');
+        }
+
+        function handleAuth(e, type) {
+            e.preventDefault();
+            const email = emailInput.value;
+            const password = passwordInput.value;
+
+            if (type === 'login') {
+                signInWithEmailAndPassword(auth, email, password)
+                    .then(() => {
+                        console.log("로그인 성공");
+                        authModal.classList.add('hidden');
+                    })
+                    .catch((error) => {
+                        console.error("로그인 실패:", error);
+                        alert("로그인 실패: " + error.message);
+                    });
+            } else {
+                createUserWithEmailAndPassword(auth, email, password)
+                    .then(() => {
+                        console.log("회원가입 성공");
+                        authModal.classList.add('hidden');
+                    })
+                    .catch((error) => {
+                        console.error("회원가입 실패:", error);
+                        alert("회원가입 실패: " + error.message);
+                    });
+            }
+        }
+
+        googleSignInButton.addEventListener('click', () => {
+            signInWithPopup(auth, googleProvider)
+                .then((result) => {
+                    console.log("구글 로그인 성공");
+                    authModal.classList.add('hidden');
+                })
+                .catch((error) => {
+                    console.error("구글 로그인 실패:", error);
+                    alert("구글 로그인 실패: " + error.message);
+                });
+        });
+
+        closeAuthModal.addEventListener('click', () => {
+            authModal.classList.add('hidden');
+        });
+
+        addButton.addEventListener('click', async () => {
+            if (!currentUser) {
+                alert("아이디어를 추가하려면 로그인이 필요합니다.");
+                return;
+            }
+            const title = titleInput.value.trim();
+            const content = contentInput.value.trim();
+            if (title && content) {
+                await addDoc(collection(db, "ideas"), {
+                    title,
+                    content,
+                    likes: 0,
+                    createdAt: new Date().toISOString(),
+                    userId: currentUser.uid,
+                    author: currentUser.email
+                });
+                titleInput.value = '';
+                contentInput.value = '';
+            }
+        });
+
+        onSnapshot(collection(db, "ideas"), (snapshot) => {
+            ideaList.innerHTML = '';
+            snapshot.forEach((doc) => {
+                const idea = doc.data();
+                const card = document.createElement('div');
+                card.className = 'idea-card bg-white p-4 rounded-lg shadow-md';
+                card.innerHTML = `
+                    <h3 class="text-xl font-semibold mb-2">${idea.title}</h3>
+                    <p class="text-gray-600 mb-2">${new Date(idea.createdAt).toLocaleDateString()}</p>
+                    <p>👍 ${idea.likes}</p>
+                    <p class="text-sm text-gray-500 mt-2">작성자: ${idea.author}</p>
+                `;
+                card.addEventListener('click', () => showModal(doc.id, idea));
+                ideaList.appendChild(card);
+            });
+        });
+
+        function showModal(id, idea) {
+            currentIdeaId = id;
+            modalTitle.textContent = idea.title;
+            modalContent.textContent = idea.content;
+            modalAuthor.textContent = `작성자: ${idea.author}`;
+            updateLikeButtonState(id, idea.likes);
+
+            const isAuthor = currentUser && currentUser.uid === idea.userId;
+            editButton.classList.toggle('hidden', !isAuthor);
+            deleteButton.classList.toggle('hidden', !isAuthor);
+
+            modal.classList.remove('hidden');
+            editContainer.classList.add('hidden');
+        }
+
+        function updateLikeButtonState(id, likes) {
+            const hasLiked = localStorage.getItem(`liked_${id}`) === 'true';
+            modalLikeButton.textContent = `👍 좋아요 (${likes})`;
+            modalLikeButton.disabled = hasLiked || !currentUser;
+            modalLikeButton.className = hasLiked || !currentUser
+                ? 'bg-gray-400 text-white px-4 py-2 rounded cursor-not-allowed'
+                : 'bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition duration-300';
+        }
+
+        modalLikeButton.addEventListener('click', async () => {
+            if (currentIdeaId && currentUser) {
+                const ideaRef = doc(db, "ideas", currentIdeaId);
+                const ideaSnap = await getDoc(ideaRef);
+
+                if (ideaSnap.exists() && !localStorage.getItem(`liked_${currentIdeaId}`)) {
+                    const currentLikes = ideaSnap.data().likes;
+                    await updateDoc(ideaRef, {likes: currentLikes + 1});
+                    localStorage.setItem(`liked_${currentIdeaId}`, 'true');
+                    modal.classList.add('hidden');
+                }
+            }
+        });
+
+        closeModal.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+        editButton.addEventListener('click', () => {
+            editContent.value = modalContent.textContent;
+            modalContent.classList.add('hidden');
+            editContainer.classList.remove('hidden');
+        });
+
+        saveEditButton.addEventListener('click', async () => {
+            const newContent = editContent.value.trim();
+            if (newContent && currentIdeaId) {
+                await updateDoc(doc(db, "ideas", currentIdeaId), {content: newContent});
+                modalContent.textContent = newContent;
+                modalContent.classList.remove('hidden');
+                editContainer.classList.add('hidden');
+            }
+        });
+
+        deleteButton.addEventListener('click', async () => {
+            if (currentIdeaId && confirm('정말로 이 아이디어를 삭제하시겠습니까?')) {
+                await deleteDoc(doc(db, "ideas", currentIdeaId));
+                modal.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+
+</html>
